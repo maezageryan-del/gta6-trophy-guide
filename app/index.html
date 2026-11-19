@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leonida Trophy Atlas — GTA VI Platinum Guide &amp; Tracker</title>
+<meta name="description" content="The full official 55-trophy guide for Grand Theft Auto VI on PS5: checklist tracker, platinum roadmap, missable alerts and cited guides. Works offline.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="hero">
+  <div class="hero-inner">
+    <p class="eyebrow">Grand Theft Auto VI &middot; PlayStation 5 &middot; 55 trophies</p>
+    <h1>Leonida Trophy Atlas</h1>
+    <p class="tagline">The complete GTA VI platinum guide &amp; tracker — every trophy, every step, nothing missable left to chance.</p>
+    <div class="progress-wrap" role="status" aria-live="polite">
+      <div class="progress-line"><strong id="progressText">0 / 55 earned</strong><span id="progressPct">0%</span></div>
+      <div class="progress-bar"><div id="progressFill"></div></div>
+      <div class="grade-counts" id="gradeCounts"></div>
+    </div>
+  </div>
+</header>
+
+<div id="missableBanner" class="missable-banner" role="alert">
+  <strong>Missable alert:</strong> <span id="missableBannerText"></span>
+  <button type="button" id="missableBannerGo">See all missables</button>
+</div>
+
+<nav class="tabs" aria-label="Guide sections">
+  <button type="button" data-tab="checklist" class="active">Checklist</button>
+  <button type="button" data-tab="roadmap">Platinum Roadmap</button>
+  <button type="button" data-tab="missables">Missables</button>
+  <button type="button" data-tab="sources">Sources</button>
+</nav>
+
+<main>
+  <section id="tab-checklist" class="tab-panel active">
+    <div class="controls">
+      <label class="search">Search <input id="search" type="search" placeholder="Trophy name or guide text…" autocomplete="off"></label>
+      <label>Kind
+        <select id="kind">
+          <option value="all">All kinds</option>
+          <option value="story">Story</option>
+          <option value="side">Side strands</option>
+          <option value="activities">Activities</option>
+          <option value="collectibles">Collectibles</option>
+          <option value="world">Open world</option>
+          <option value="completion">Completion</option>
+        </select>
+      </label>
+      <label>Grade
+        <select id="grade">
+          <option value="all">All grades</option>
+          <option value="platinum">Platinum</option>
+          <option value="gold">Gold</option>
+          <option value="silver">Silver</option>
+          <option value="bronze">Bronze</option>
+        </select>
+      </label>
+      <label class="check"><input id="missableOnly" type="checkbox"> Missable only</label>
+      <label class="check"><input id="hideEarned" type="checkbox"> Hide earned</label>
+      <label class="check"><input id="spoiler" type="checkbox"> Spoiler-safe mode</label>
+    </div>
+    <p class="hint">Tick a trophy when you earn it — progress saves on this device. Spoiler-safe mode hides story trophy names and descriptions until you earn them.</p>
+    <div class="actions">
+      <button type="button" id="exportBtn">Export progress</button>
+      <label class="import-btn">Import progress <input id="importFile" type="file" accept="application/json"></label>
+      <button type="button" id="resetBtn" class="danger">Reset progress</button>
+      <span id="resultCount" class="result-count"></span>
+    </div>
+    <div id="trophyList" class="trophy-list"></div>
+    <p id="emptyState" class="empty-state" hidden>No trophies match these filters. Clear the search or widen the filters.</p>
+  </section>
+
+  <section id="tab-roadmap" class="tab-panel" hidden>
+    <h2>Platinum roadmap</h2>
+    <p class="section-intro">Follow the stages in order. Story first, then the strands and activities that unlock as you go, then the long collectible sweeps last — that order keeps the few missable moments inside their windows.</p>
+    <ol class="roadmap" id="roadmapList"></ol>
+  </section>
+
+  <section id="tab-missables" class="tab-panel" hidden>
+    <h2>Missables — do these on time</h2>
+    <p class="section-intro">Most GTA VI trophies can be earned any time in free roam. The eight below are the exceptions: each one is tied to a moment, a partner, or a choice that can pass you by. Do them when the guide says, not later.</p>
+    <div id="missableList" class="trophy-list"></div>
+  </section>
+
+  <section id="tab-sources" class="tab-panel" hidden>
+    <h2>Sources &amp; method</h2>
+    <p class="section-intro">Trophy names, descriptions, grades and hidden flags follow the official PlayStation trophy list. Every guide on this page is written in the author's own words; the sources below are where the underlying facts were checked, and each trophy card names its own sources. Nothing here copies another guide's text.</p>
+    <ul class="source-list">
+      <li><strong>Exophase — GTA VI trophy list</strong> — full 55-trophy list with grades and hidden flags.</li>
+      <li><strong>PSNProfiles — GTA VI trophy guide</strong> — per-trophy unlock conditions and community reports.</li>
+      <li><strong>PowerPyx — GTA VI trophy roadmap</strong> — roadmap order, 100% checklist and activity counts.</li>
+      <li><strong>GTA Wiki — GTA VI</strong> — story chapters, missions, strangers, gangs and map areas.</li>
+      <li><strong>GTA Forums — GTA VI trophy discussion</strong> — player reports on missable moments and edge cases.</li>
+    </ul>
+    <p class="section-intro">Counts used in the guides: 250 stunts, 42 Shooting Range challenges, 14 drone-race locations, 20 races, 9 activity types, 8 stranger strands, 18 meditation spots, 3 card sets, 100 WAiNK It locations, 50 challenges, 100 vehicles, 5 bank vaults, 52 areas, 9 gangs, $250,000 laundered, $100,000 spent, 8 garages, 10 Scooter Bros registrations, 500 choices.</p>
+  </section>
+</main>
+
+<footer>
+  <p>Leonida Trophy Atlas — an unofficial fan guide. Not affiliated with Rockstar Games or PlayStation. Trophy data: official PlayStation list, 2026-11-18. Works fully offline; your checklist never leaves this device.</p>
+</footer>
+<script type="module" src="app.js"></script>
+</body>
+</html>
