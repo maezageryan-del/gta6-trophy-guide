@@ -71,6 +71,7 @@ const dossier = buildDossier(root, {
   text_max_bytes: 4 * 1024 * 1024,
   screenshots: { max: 8, max_bytes: 256 * 1024 },
 });
-const out = join(root, 'dossier.json');
+const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? root;
+const out = join(outDir, 'dossier.json');
 writeFileSync(out, dossier);
 console.log(`Dossier written: ${out} (${dossier.length} bytes)`);
