@@ -1,455 +1,255 @@
-// Leonida Runbook — offline checklist tracker for the 55 GTA VI trophies.
-// Audited, step-structured data: every trophy carries numbered steps, a run-sheet
-// stage, a missable verdict and cited sources. Progress and counters live in
-// localStorage; export/import moves them as a JSON file. No network calls are
-// made: the trophy data is fetched once from the local data file.
-const STORAGE_KEY = 'leonida-runbook-v1';
-const COUNTER_KEY = 'leonida-runbook-counters-v1';
-const DEMO_EARNED = [2, 3, 4, 8, 16, 20, 21, 44, 46, 52];
-const KIND_LABELS = { story: 'Story', side: 'Side strand', activities: 'Activity', collectibles: 'Collectible', world: 'Open world', completion: 'Completion' };
+/* The Platinum Docket — sworn trophy record for GTA VI.
+   Every step is an exhibit; every exhibit carries its citation.
+   Tracker state (earned flags, counters, reveals) persists in localStorage. */
+'use strict';
 
-const doc = await (await fetch('data/trophies.json')).json();
-const trophies = doc.trophies;
-const sources = doc.sources ?? {};
-const roadmap = doc.roadmap ?? [];
-const $ = (id) => document.getElementById(id);
-const listEl = $('trophyList');
-const missableListEl = $('missableList');
+const STORE_KEY = 'platinum-docket-v3';
+let DATA = null;
+let state = loadState();
+let ui = { tab: 'docket', q: '', grade: 'all', stage: 'all', kind: 'all', missableOnly: false, openId: null };
 
-let earned = loadEarned();
-let counters = loadCounters();
-let openGuide = new Set();
-
-function loadEarned() {
-  try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]')); }
-  catch { return new Set(); }
-}
-
-function saveEarned() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([...earned].sort((a, b) => a - b)));
-}
-
-function loadCounters() {
-  try { return JSON.parse(localStorage.getItem(COUNTER_KEY) ?? '{}'); }
+function loadState() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; }
   catch { return {}; }
 }
+function saveState() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+function earned(id) { return !!(state.earned && state.earned[id]); }
+function setEarned(id, on) {
+  state.earned = state.earned || {};
+  if (on) state.earned[id] = true; else delete state.earned[id];
+  saveState();
+}
+function countOf(t) {
+  if (!t.target) return null;
+  const v = state.counts && state.counts[t.id];
+  return typeof v === 'number' ? v : 0;
+}
+function setCount(id, v) {
+  state.counts = state.counts || {};
+  state.counts[id] = Math.max(0, v);
+  saveState();
+}
+function revealed(id) { return !!(state.revealed && state.revealed[id]); }
 
-function saveCounters() {
-  localStorage.setItem(COUNTER_KEY, JSON.stringify(counters));
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+const shortSource = (name) => name.split('—')[0].trim();
+function citeChip(key) {
+  const src = DATA.sources[key];
+  if (!src) return '';
+  return `<span class="cite" title="${esc(src.name)} — ${esc(src.role)}">${esc(shortSource(src.name))} · read ${esc(src.read)}</span>`;
+}
+function totals() {
+  const steps = DATA.trophies.reduce((n, t) => n + t.steps.length, 0);
+  return { steps, cites: steps, miss: DATA.trophies.filter((t) => t.missable).length, srcs: Object.keys(DATA.sources).length };
 }
 
-function sourceName(key) {
-  return sources[key]?.name ?? key;
+function parseHash() {
+  const h = location.hash.replace(/^#/, '');
+  const parts = Object.fromEntries(h.split('&').filter(Boolean).map((kv) => {
+    const i = kv.indexOf('='); return i < 0 ? [kv, '1'] : [kv.slice(0, i), kv.slice(i + 1)];
+  }));
+  if (parts.tab) ui.tab = parts.tab;
+  if (parts.open) ui.openId = Number(parts.open);
+  return parts;
 }
 
-function stageTitle(stage) {
-  return roadmap.find((s) => s.stage === stage)?.title ?? `Stage ${stage}`;
+function applyDemo() {
+  // #demo pre-marks a small, honest sample as earned for screenshots.
+  [2, 3, 8, 15, 33].forEach((id) => { state.earned = state.earned || {}; state.earned[id] = true; });
+  const t15 = DATA.trophies.find((t) => t.id === 15);
+  if (t15) setCount(15, 137);
+  saveState();
 }
 
 function renderAudit() {
-  const total = trophies.length;
-  const withSteps = trophies.filter((t) => Array.isArray(t.steps) && t.steps.length > 0).length;
-  const stepCount = trophies.reduce((n, t) => n + (t.steps?.length ?? 0), 0);
-  const verdicts = trophies.filter((t) => t.missableWhy && t.missableWhy.trim()).length;
-  const windows = trophies.filter((t) => t.missable && t.window).length;
-  const counted = trophies.filter((t) => t.target != null).length;
-  const readDates = [...new Set(Object.values(sources).map((s) => s.read).filter(Boolean))];
-  $('auditStrip').textContent =
-    `Audit: ${total}/${total} trophies · ${withSteps} with step-by-step guides · ${stepCount} steps · ` +
-    `${verdicts} missable verdicts · ${windows} missable windows · ${counted} counted targets · ` +
-    `sources read ${readDates.join(', ') || '—'}`;
+  const t = totals();
+  const done = DATA.trophies.filter((x) => earned(x.id)).length;
+  document.getElementById('audit').innerHTML =
+    `AUDIT — sworn at load: <b>${DATA.trophies.length} trophies</b> · <b>${t.steps} steps</b> · <b>${t.cites} citations</b> · <b>${t.miss} missables with windows</b> · <b>${t.srcs} dated sources</b> · earned <b>${done}/55</b>`;
+  const pct = Math.round((done / DATA.trophies.length) * 100);
+  document.getElementById('progress').innerHTML =
+    `Platinum progress <span class="bar"><span class="fill" style="width:${pct}%"></span></span> ${done} of ${DATA.trophies.length} cases closed (${pct}%)`;
 }
 
-function gradeCounts() {
-  const counts = { platinum: [0, 0], gold: [0, 0], silver: [0, 0], bronze: [0, 0] };
-  for (const t of trophies) {
-    counts[t.grade][1] += 1;
-    if (earned.has(t.id)) counts[t.grade][0] += 1;
-  }
-  return counts;
+function renderChips() {
+  const grades = ['all', 'platinum', 'gold', 'silver', 'bronze'];
+  const kinds = ['all', ...new Set(DATA.trophies.map((t) => t.kind))];
+  const stages = ['all', '1', '2', '3', '4', '5', '6', '7'];
+  const mk = (label, active, fn, cls = '') => `<button type="button" class="chip ${cls} ${active ? 'on' : ''}" data-fn="${fn}">${esc(label)}</button>`;
+  let html = grades.map((g) => mk(g === 'all' ? 'All grades' : g, ui.grade === g, `grade:${g}`)).join('');
+  html += stages.map((s) => mk(s === 'all' ? 'All stages' : 'Stage ' + s, ui.stage === s, `stage:${s}`)).join('');
+  html += kinds.map((k) => mk(k === 'all' ? 'All kinds' : k, ui.kind === k, `kind:${k}`)).join('');
+  html += mk('Missable only (8)', ui.missableOnly, 'miss:1', 'miss');
+  document.getElementById('chips').innerHTML = html;
+  document.querySelectorAll('#chips .chip').forEach((b) => b.addEventListener('click', () => {
+    const [k, v] = b.dataset.fn.split(':');
+    if (k === 'grade') ui.grade = v; else if (k === 'stage') ui.stage = v;
+    else if (k === 'kind') ui.kind = v; else if (k === 'miss') ui.missableOnly = !ui.missableOnly;
+    render();
+  }));
 }
 
-function renderProgress() {
-  const total = trophies.length;
-  const pct = Math.round((earned.size / total) * 100);
-  $('progressText').textContent = `${earned.size} / ${total} earned`;
-  $('progressPct').textContent = `${pct}%`;
-  $('progressFill').style.width = `${pct}%`;
-  const counts = gradeCounts();
-  $('gradeCounts').innerHTML = Object.entries(counts)
-    .map(([g, [have, all]]) => `<span>${g[0].toUpperCase() + g.slice(1)} <b>${have}/${all}</b></span>`)
-    .join('');
-  const left = trophies.filter((t) => t.missable && !earned.has(t.id));
-  $('missableBannerText').textContent = left.length
-    ? `${left.length} missable ${left.length === 1 ? 'trophy' : 'trophies'} still open — ${left.slice(0, 3).map((t) => t.name).join(', ')}${left.length > 3 ? ` and ${left.length - 3} more` : ''}. Do them inside their windows.`
-    : 'All missable trophies are earned. Nothing left that can pass you by.';
-}
-
-function spoilerHidden(t) {
-  return $('spoiler').checked && t.hidden && !earned.has(t.id);
+function filtered() {
+  const q = ui.q.trim().toLowerCase();
+  return DATA.trophies.filter((t) => {
+    if (ui.grade !== 'all' && t.grade !== ui.grade) return false;
+    if (ui.stage !== 'all' && String(t.stage) !== ui.stage) return false;
+    if (ui.kind !== 'all' && t.kind !== ui.kind) return false;
+    if (ui.missableOnly && !t.missable) return false;
+    if (q && !(t.name + ' ' + t.description + ' ' + t.chapter + ' ' + t.kind + ' ' + t.guide).toLowerCase().includes(q)) return false;
+    return true;
+  });
 }
 
 function displayName(t) {
-  return spoilerHidden(t) ? 'Hidden trophy' : t.name;
-}
-
-function chip(text, cls) {
-  const el = document.createElement('span');
-  el.className = `chip ${cls}`;
-  el.textContent = text;
-  return el;
-}
-
-function counterStep(t) {
-  return t.target >= 10000 ? 1000 : 1;
-}
-
-function buildCounter(t, wrap) {
-  const box = document.createElement('div');
-  box.className = 'counter';
-  const label = document.createElement('span');
-  label.className = 'counter-label';
-  const value = document.createElement('strong');
-  value.className = 'counter-value';
-  const paint = () => {
-    const n = counters[t.id] ?? 0;
-    value.textContent = `${n.toLocaleString('en-US')} / ${t.target.toLocaleString('en-US')}`;
-    label.textContent = `Progress — ${t.unit}: `;
-  };
-  const minus = document.createElement('button');
-  minus.type = 'button';
-  minus.textContent = '−';
-  minus.setAttribute('aria-label', `Decrease ${t.name} progress`);
-  minus.addEventListener('click', () => {
-    counters[t.id] = Math.max(0, (counters[t.id] ?? 0) - counterStep(t));
-    saveCounters();
-    paint();
-  });
-  const plus = document.createElement('button');
-  plus.type = 'button';
-  plus.textContent = '+';
-  plus.setAttribute('aria-label', `Increase ${t.name} progress`);
-  plus.addEventListener('click', () => {
-    counters[t.id] = Math.min(t.target, (counters[t.id] ?? 0) + counterStep(t));
-    saveCounters();
-    paint();
-  });
-  paint();
-  box.append(label, minus, value, plus);
-  wrap.append(box);
-}
-
-function trophyCard(t, { showGuide = false } = {}) {
-  const card = document.createElement('article');
-  card.className = 'card' + (earned.has(t.id) ? ' earned' : '');
-  const top = document.createElement('div');
-  top.className = 'card-top';
-  const box = document.createElement('input');
-  box.type = 'checkbox';
-  box.checked = earned.has(t.id);
-  box.setAttribute('aria-label', `Mark ${t.name} as earned`);
-  box.addEventListener('change', () => {
-    if (box.checked) earned.add(t.id); else earned.delete(t.id);
-    saveEarned();
-    renderAll();
-  });
-  const main = document.createElement('div');
-  main.className = 'card-main';
-  const title = document.createElement('h3');
-  title.className = 'card-title';
-  title.textContent = displayName(t);
-  if (earned.has(t.id)) {
-    const mark = document.createElement('span');
-    mark.className = 'earned-mark';
-    mark.textContent = ' ✓ earned';
-    title.append(mark);
+  if (t.hidden && !revealed(t.id) && !earned(t.id)) {
+    return `<span class="masked">Case sealed — hidden trophy</span><button type="button" class="reveal" data-reveal="${t.id}">Reveal</button>`;
   }
-  const desc = document.createElement('p');
-  desc.className = 'card-desc';
-  desc.textContent = spoilerHidden(t)
-    ? 'Spoiler-safe mode is on — earn this hidden trophy in game to reveal its name and description.'
-    : t.description;
-  const chips = document.createElement('div');
-  chips.className = 'chips';
-  chips.append(chip(t.grade, t.grade), chip(KIND_LABELS[t.kind] ?? t.kind, 'kind'));
-  chips.append(chip(`Stage ${t.stage} · ${stageTitle(t.stage)}`, 'stage'));
-  chips.append(chip(t.chapter, 'chapter'));
-  chips.append(chip(`⏱ ${t.time}`, 'meta'));
-  chips.append(chip(`Difficulty ${t.difficulty}/5`, 'meta'));
-  if (t.target != null) chips.append(chip(`Target ${t.target.toLocaleString('en-US')} ${t.unit}`, 'target'));
-  if (t.hidden) chips.append(chip('Hidden on PSN', 'hidden'));
-  if (t.missable) chips.append(chip('Missable', 'missable'));
-  main.append(title, desc, chips);
-  const toggle = document.createElement('button');
-  toggle.type = 'button';
-  toggle.className = 'guide-toggle';
-  const isOpen = showGuide || openGuide.has(t.id);
-  toggle.textContent = isOpen ? 'Hide guide ▲' : 'Show guide ▼';
-  toggle.addEventListener('click', () => {
-    if (openGuide.has(t.id)) openGuide.delete(t.id); else openGuide.add(t.id);
-    renderAll();
-  });
-  main.append(toggle);
-  if (isOpen) main.append(buildGuide(t));
-  top.append(box, main);
-  card.append(top);
-  return card;
+  return esc(t.name);
 }
 
-function buildGuide(t) {
-  const guide = document.createElement('div');
-  guide.className = 'guide';
-  const verdict = document.createElement('p');
-  verdict.className = t.missable ? 'miss-line' : 'verdict-line';
-  verdict.textContent = t.missable
-    ? `Missable — ${t.missableWhy}`
-    : `Not missable — ${t.missableWhy}`;
-  guide.append(verdict);
-  if (t.missable && t.window) {
-    const win = document.createElement('p');
-    win.className = 'window-callout';
-    win.textContent = `Window: ${t.window} (Stage ${t.stage} · ${t.chapter})`;
-    guide.append(win);
-  }
-  const body = document.createElement('p');
-  body.textContent = t.guide;
-  guide.append(body);
-  if (Array.isArray(t.steps) && t.steps.length) {
-    const head = document.createElement('p');
-    head.className = 'steps-head';
-    head.textContent = 'Step by step:';
-    const ol = document.createElement('ol');
-    ol.className = 'steps';
-    for (const s of t.steps) {
-      const li = document.createElement('li');
-      li.textContent = s;
-      ol.append(li);
-    }
-    guide.append(head, ol);
-  }
-  if (t.target != null) buildCounter(t, guide);
-  const meta = document.createElement('p');
-  meta.className = 'guide-meta';
-  meta.textContent = `Stage ${t.stage} — ${stageTitle(t.stage)} · ${t.chapter} · Time ${t.time} · Difficulty ${t.difficulty}/5`;
-  const src = document.createElement('p');
-  src.className = 'guide-sources';
-  const citeNames = (t.cites ?? []).map(sourceName);
-  src.textContent = `Sources: ${citeNames.length ? citeNames.join(' · ') : t.sources.join(' · ')}`;
-  guide.append(meta, src);
-  return guide;
+function caseFileRow(t) {
+  const steps = t.steps.map((s) => `<li>${esc(typeof s === 'string' ? s : s.t)}${typeof s === 'string' ? '' : citeChip(s.c)}</li>`).join('');
+  const counter = t.target ? `<div class="counter">Filed progress:
+    <button type="button" data-dec="${t.id}" aria-label="Decrease">−</button>
+    <span>${countOf(t)} / ${t.target} ${esc(t.unit || '')}</span>
+    <button type="button" data-inc="${t.id}" aria-label="Increase">+</button></div>` : '';
+  const warn = t.missable ? `<div class="warn"><b>Missable — window on record:</b> ${esc(t.missableWhy)}<br><b>Window:</b> ${esc(t.window || t.missableWhen || '')}</div>`
+    : `<p class="src">Standing: ${esc(t.missableWhy)}</p>`;
+  const srcs = (t.sources || []).map((s) => esc(s)).join(' · ');
+  return `<tr class="file"><td colspan="10"><div class="filebox">
+    <h3>Case ${t.id} — ${esc(t.name)}</h3>
+    <div class="meta">${esc(t.description)} · ${esc(t.grade)} · stage ${t.stage} · ${esc(t.chapter)} · ${esc(t.kind)} · time ${esc(t.time)} · difficulty ${t.difficulty}/5</div>
+    <p class="guide">${esc(t.guide)}</p>
+    ${warn}${counter}
+    <ol class="exhibits">${steps}</ol>
+    <p class="src">Sources of record: ${srcs}</p>
+  </div></td></tr>`;
 }
 
-function currentFilters() {
-  return {
-    q: $('search').value.trim().toLowerCase(),
-    kind: $('kind').value,
-    grade: $('grade').value,
-    stage: $('stage').value,
-    missableOnly: $('missableOnly').checked,
-    hideEarned: $('hideEarned').checked,
-  };
+function renderDocket() {
+  const rows = filtered();
+  const body = rows.map((t) => {
+    const main = `<tr class="case ${earned(t.id) ? 'earned' : ''}" data-open="${t.id}">
+      <td class="num">${t.id}</td>
+      <td class="name">${displayName(t)}<span class="desc">${esc(t.description)}</span></td>
+      <td><span class="grade ${esc(t.grade)}">${esc(t.grade)}</span></td>
+      <td class="num">${t.stage}</td>
+      <td>${esc(t.chapter)}</td>
+      <td class="num">${t.steps.length}</td>
+      <td class="num">${t.steps.length}</td>
+      <td>${t.target ? esc(t.target) + ' ' + esc(t.unit || '') : '—'}</td>
+      <td>${t.missable ? '<span class="miss">Missable</span>' : '<span class="safe">Safe</span>'}</td>
+      <td><input type="checkbox" class="earn" data-earn="${t.id}" ${earned(t.id) ? 'checked' : ''} aria-label="Mark ${esc(t.name)} earned"></td>
+    </tr>`;
+    return ui.openId === t.id ? main + caseFileRow(t) : main;
+  }).join('');
+  document.getElementById('main').innerHTML = rows.length
+    ? `<table class="docket"><thead><tr><th>#</th><th>Trophy — case</th><th>Grade</th><th>Stg</th><th>Chapter</th><th>Steps</th><th>Cites</th><th>Target</th><th>Missable</th><th>Earned</th></tr></thead><tbody>${body}</tbody></table>`
+    : '<p class="empty">No cases match the current filters.</p>';
+  wireRows();
 }
 
-function matchesFilters(t, f) {
-  if (f.kind !== 'all' && t.kind !== f.kind) return false;
-  if (f.grade !== 'all' && t.grade !== f.grade) return false;
-  if (f.stage !== 'all' && t.stage !== Number(f.stage)) return false;
-  if (f.missableOnly && !t.missable) return false;
-  if (f.hideEarned && earned.has(t.id)) return false;
-  if (f.q && !(t.name.toLowerCase().includes(f.q) || t.description.toLowerCase().includes(f.q) || t.guide.toLowerCase().includes(f.q) || (t.steps ?? []).join(' ').toLowerCase().includes(f.q))) return false;
-  return true;
-}
-
-function renderChecklist() {
-  const f = currentFilters();
-  const shown = trophies.filter((t) => matchesFilters(t, f));
-  listEl.replaceChildren(...shown.map((t) => trophyCard(t)));
-  $('emptyState').hidden = shown.length > 0;
-  $('resultCount').textContent = `Showing ${shown.length} of ${trophies.length} trophies`;
-}
-
-function renderNextUp() {
-  const next = trophies
-    .filter((t) => !earned.has(t.id))
-    .sort((a, b) => (Number(b.missable) - Number(a.missable)) || (a.stage - b.stage) || (a.id - b.id))
-    .slice(0, 5);
-  const wrap = $('nextUpList');
-  if (!next.length) {
-    wrap.innerHTML = '<p class="next-up-done">Everything is earned — platinum run complete. 🏆</p>';
-    return;
-  }
-  wrap.replaceChildren(...next.map((t, i) => {
-    const row = document.createElement('div');
-    row.className = 'next-up-row' + (t.missable ? ' urgent' : '');
-    const rank = document.createElement('span');
-    rank.className = 'next-up-rank';
-    rank.textContent = `${i + 1}`;
-    const body = document.createElement('div');
-    body.className = 'next-up-body';
-    const name = document.createElement('strong');
-    name.textContent = displayName(t);
-    const note = document.createElement('span');
-    note.className = 'next-up-note';
-    note.textContent = t.missable && t.window
-      ? `Stage ${t.stage} · ${t.chapter} · Window: ${t.window}`
-      : `Stage ${t.stage} · ${stageTitle(t.stage)} · ${t.chapter} · ${t.time}`;
-    body.append(name, note);
-    const go = document.createElement('button');
-    go.type = 'button';
-    go.textContent = 'Guide';
-    go.addEventListener('click', () => {
-      openGuide.add(t.id);
-      renderAll();
-      document.querySelectorAll('.card')[0]?.scrollIntoView;
-      window.scrollTo({ top: document.body.scrollHeight * 0, behavior: 'smooth' });
-      const cards = [...document.querySelectorAll('#trophyList .card')];
-      const idx = trophies.filter((x) => matchesFilters(x, currentFilters())).findIndex((x) => x.id === t.id);
-      if (idx >= 0 && cards[idx]) cards[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-    row.append(rank, body, go);
-    return row;
+function wireRows() {
+  document.querySelectorAll('[data-open]').forEach((row) => row.addEventListener('click', (e) => {
+    if (e.target.closest('input,button')) return;
+    const id = Number(row.dataset.open);
+    ui.openId = ui.openId === id ? null : id;
+    render();
   }));
-}
-
-function renderMissables() {
-  const miss = trophies.filter((t) => t.missable);
-  missableListEl.replaceChildren(...miss.map((t) => trophyCard(t, { showGuide: true })));
+  document.querySelectorAll('[data-earn]').forEach((box) => box.addEventListener('change', () => {
+    setEarned(Number(box.dataset.earn), box.checked); render();
+  }));
+  document.querySelectorAll('[data-reveal]').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.revealed = state.revealed || {}; state.revealed[Number(b.dataset.reveal)] = true; saveState(); render();
+  }));
+  document.querySelectorAll('[data-inc],[data-dec]').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const id = Number(b.dataset.inc || b.dataset.dec);
+    const t = DATA.trophies.find((x) => x.id === id);
+    const next = countOf(t) + (b.dataset.inc ? 1 : -1);
+    setCount(id, Math.min(next, t.target || next)); render();
+  }));
 }
 
 function renderRoadmap() {
-  const list = $('roadmapList');
-  list.replaceChildren(...roadmap.map((stage) => {
-    const li = document.createElement('li');
-    const h = document.createElement('h3');
-    h.textContent = `Stage ${stage.stage} — ${stage.title}`;
-    const p = document.createElement('p');
-    p.textContent = stage.blurb;
-    const inStage = trophies.filter((t) => t.stage === stage.stage).sort((a, b) => a.id - b.id);
-    const done = inStage.filter((t) => earned.has(t.id)).length;
-    const count = document.createElement('p');
-    count.className = 'stage-count';
-    count.textContent = `${done} / ${inStage.length} earned in this stage`;
-    li.append(h, p, count);
-    const rows = document.createElement('div');
-    rows.className = 'run-rows';
-    for (const t of inStage) {
-      const row = document.createElement('div');
-      row.className = 'run-row' + (earned.has(t.id) ? ' earned' : '');
-      const box = document.createElement('input');
-      box.type = 'checkbox';
-      box.checked = earned.has(t.id);
-      box.setAttribute('aria-label', `Mark ${t.name} as earned`);
-      box.addEventListener('change', () => {
-        if (box.checked) earned.add(t.id); else earned.delete(t.id);
-        saveEarned();
-        renderAll();
-        renderRoadmap();
-      });
-      const label = document.createElement('span');
-      label.className = 'run-name';
-      label.textContent = `${displayName(t)} `;
-      const meta = document.createElement('span');
-      meta.className = 'run-meta';
-      meta.textContent = `· ${t.grade} · ${t.chapter} · ${t.time}`;
-      label.append(meta);
-      row.append(box, label);
-      if (t.missable && t.window) {
-        const flag = document.createElement('span');
-        flag.className = 'run-window';
-        flag.textContent = `⚠ Window: ${t.window}`;
-        row.append(flag);
-      }
-      rows.append(row);
-    }
-    li.append(rows);
-    return li;
-  }));
+  const html = DATA.roadmap.map((r) => {
+    const list = DATA.trophies.filter((t) => t.stage === r.stage)
+      .map((t) => `<li>${earned(t.id) ? '☑' : '☐'} Case ${t.id} — ${esc(t.name)} (${t.steps.length} exhibits)</li>`).join('');
+    return `<div class="stage"><h3>Stage ${r.stage} — ${esc(r.title)}</h3><p>${esc(r.blurb)}</p><ul>${list}</ul></div>`;
+  }).join('');
+  document.getElementById('main').innerHTML = `<section class="panel"><h2>Roadmap — the 7-stage run sheet</h2>${html}</section>`;
+}
+
+function renderMissables() {
+  const rows = DATA.trophies.filter((t) => t.missable).map((t) =>
+    `<tr><td class="num">${t.id}</td><td><b>${esc(t.name)}</b><span class="desc" style="display:block;color:var(--ink2)">${esc(t.description)}</span></td><td>${t.stage}</td><td>${esc(t.window || t.missableWhen || '')}</td><td>${esc(t.missableWhy)}</td><td><input type="checkbox" class="earn" data-earn="${t.id}" ${earned(t.id) ? 'checked' : ''}></td></tr>`).join('');
+  document.getElementById('main').innerHTML = `<section class="panel"><h2>Missables — 8 cases with closing windows</h2>
+    <p>These are the only cases that can close against you. Each window below is quoted from the record; file these before their stage passes.</p>
+    <table class="plain"><thead><tr><th>#</th><th>Trophy</th><th>Stg</th><th>Window</th><th>Why it can be missed</th><th>Earned</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+  wireRows();
+}
+
+function renderNext() {
+  const left = DATA.trophies.filter((t) => !earned(t.id))
+    .sort((a, b) => (a.stage - b.stage) || ((b.missable ? 1 : 0) - (a.missable ? 1 : 0)) || (a.id - b.id));
+  const rows = left.map((t, i) => `<tr><td class="num">${i + 1}</td><td class="num">${t.id}</td><td><b>${displayName(t)}</b></td><td><span class="grade ${esc(t.grade)}">${esc(t.grade)}</span></td><td>${t.stage}</td><td>${esc(t.chapter)}</td><td>${t.missable ? '<span class="miss">Window open</span>' : '<span class="safe">Safe</span>'}</td><td class="num">${t.steps.length}</td></tr>`).join('');
+  document.getElementById('main').innerHTML = `<section class="panel"><h2>Next-Up — ${left.length} cases still open</h2>
+    <p>Ordered by roadmap stage, with missable windows first inside each stage — close the closing cases before the safe ones.</p>
+    <table class="plain"><thead><tr><th>Order</th><th>#</th><th>Trophy</th><th>Grade</th><th>Stg</th><th>Chapter</th><th>Standing</th><th>Exhibits</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+  wireRows();
 }
 
 function renderSources() {
-  const list = $('sourceList');
-  list.replaceChildren(...Object.values(sources).map((s) => {
-    const li = document.createElement('li');
-    const strong = document.createElement('strong');
-    strong.textContent = s.name;
-    li.append(strong, document.createTextNode(` — ${s.role} (read ${s.read}).`));
-    return li;
-  }));
+  const rows = Object.entries(DATA.sources).map(([key, s]) =>
+    `<tr><td><b>${esc(key)}</b></td><td>${esc(s.name)}</td><td>${esc(s.role)}</td><td>${esc(s.read)}</td><td class="num">${DATA.trophies.reduce((n, t) => n + t.steps.filter((x) => typeof x !== 'string' && x.c === key).length, 0)}</td></tr>`).join('');
+  document.getElementById('main').innerHTML = `<section class="panel"><h2>Sources — the dated register</h2>
+    <p>Every exhibit in every case file cites one of these registers. Citation counts are counted live from the data.</p>
+    <table class="plain"><thead><tr><th>Key</th><th>Source</th><th>Role in the record</th><th>Read</th><th>Citations</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="src">${esc(DATA.note || '')}</p></section>`;
 }
 
-function switchTab(name) {
-  document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
-  document.querySelectorAll('.tab-panel').forEach((p) => {
-    const isActive = p.id === `tab-${name}`;
-    p.classList.toggle('active', isActive);
-    p.hidden = !isActive;
+function render() {
+  renderAudit(); renderChips();
+  document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === ui.tab));
+  if (ui.tab === 'roadmap') renderRoadmap();
+  else if (ui.tab === 'missables') renderMissables();
+  else if (ui.tab === 'next') renderNext();
+  else if (ui.tab === 'sources') renderSources();
+  else renderDocket();
+}
+
+function wireChrome() {
+  document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => {
+    ui.tab = b.dataset.tab;
+    history.replaceState(null, '', ui.tab === 'docket' ? '#tab=docket' : '#tab=' + ui.tab);
+    render();
+  }));
+  document.getElementById('q').addEventListener('input', (e) => { ui.q = e.target.value; if (ui.tab !== 'docket') ui.tab = 'docket'; render(); });
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'platinum-docket-tracker.json'; a.click();
+    URL.revokeObjectURL(a.href);
+  });
+  document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
+  document.getElementById('importFile').addEventListener('change', (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    f.text().then((txt) => { try { state = JSON.parse(txt); saveState(); render(); } catch { alert('That file is not a Docket tracker export.'); } });
+  });
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    if (confirm('Reset the whole tracker? Earned flags, counters and reveals will be cleared.')) { state = {}; saveState(); render(); }
   });
 }
 
-function exportProgress() {
-  const blob = new Blob([JSON.stringify({ game: 'GTA VI', earned: [...earned].sort((a, b) => a - b), counters, exported: new Date().toISOString() }, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'leonida-runbook-progress.json';
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
-async function importProgress(file) {
-  if (!file) return;
-  const data = JSON.parse(await file.text());
-  const ids = Array.isArray(data) ? data : data.earned;
-  earned = new Set(ids.filter((id) => trophies.some((t) => t.id === id)));
-  if (!Array.isArray(data) && data.counters && typeof data.counters === 'object') {
-    counters = Object.fromEntries(Object.entries(data.counters).filter(([id]) => trophies.some((t) => t.id === Number(id))));
-    saveCounters();
-  }
-  saveEarned();
-  renderAll();
-  renderRoadmap();
-}
-
-function applyHashState() {
-  const hash = new URLSearchParams(location.hash.slice(1));
-  const tab = hash.get('tab');
-  if (tab && document.getElementById(`tab-${tab}`)) switchTab(tab);
-  if (hash.has('demo')) {
-    earned = new Set(DEMO_EARNED);
-    saveEarned();
-  }
-  const open = Number(hash.get('open'));
-  if (open && trophies.some((t) => t.id === open)) openGuide.add(open);
-}
-
-function renderAll() {
-  renderProgress();
-  renderNextUp();
-  renderChecklist();
-  renderMissables();
-}
-
-const stageSelect = $('stage');
-for (const s of roadmap) {
-  const opt = document.createElement('option');
-  opt.value = String(s.stage);
-  opt.textContent = `Stage ${s.stage} — ${s.title}`;
-  stageSelect.append(opt);
-}
-
-document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
-$('missableBannerGo').addEventListener('click', () => switchTab('missables'));
-for (const id of ['search', 'kind', 'grade', 'stage', 'missableOnly', 'hideEarned', 'spoiler']) {
-  $(id).addEventListener('input', renderAll);
-  $(id).addEventListener('change', renderAll);
-}
-$('exportBtn').addEventListener('click', exportProgress);
-$('importFile').addEventListener('change', (e) => importProgress(e.target.files[0]));
-$('resetBtn').addEventListener('click', () => {
-  if (confirm('Clear all earned trophies and counters?')) { earned = new Set(); counters = {}; saveEarned(); saveCounters(); renderAll(); renderRoadmap(); }
-});
-
-applyHashState();
-renderAudit();
-renderSources();
-renderRoadmap();
-renderAll();
+fetch('data/trophies.json')
+  .then((r) => { if (!r.ok) throw new Error('trophies.json ' + r.status); return r.json(); })
+  .then((data) => {
+    DATA = data;
+    const parts = parseHash();
+    if (parts.demo) applyDemo();
+    wireChrome();
+    render();
+  })
+  .catch((err) => { document.getElementById('main').innerHTML = `<p class="empty">The record could not be filed: ${esc(err.message)}</p>`; });

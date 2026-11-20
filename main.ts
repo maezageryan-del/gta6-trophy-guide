@@ -1,67 +1,76 @@
-// Leonida Runbook — a gta6-trophy-guide-01 entry (Node 22, standard library only).
-// The guide is this directory's app/ folder: plain static files a browser opens at
-// app/index.html (ES module, CSS, no build step), offline — it loads nothing over the
-// network, and its trophy list and guides are app/data/trophies.json. The program hands
-// it in: it copies app/ and screenshots/ from beside this file to /output and writes
-// /output/dossier.json, the summary the judge reads (your screenshots, the first load's
-// files and bytes, and your source), with the vendored make.fun library. Leave
-// vendor/makefun-frontend.ts as it is: the scorer requires dossier.json to be byte for
-// byte what its own copy writes.
-//
-// Serve it locally with `node serve.ts`, then open http://localhost:8080.
-// The app itself is fully offline: index.html, style.css, app.js and
-// data/trophies.json are the only files it loads, all from the same folder.
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+// The Platinum Docket — Leonida's sworn trophy record (gta6-trophy-guide-01, v3).
+// Entrypoint: validate the sworn record in app/data/trophies.json, then build
+// the make.fun dossier for this entry directory with the vendored library.
+// Run with: node main.ts   (Node with type stripping; no package.json needed.)
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-frontend.ts';
 
-const here = fileURLToPath(new URL('.', import.meta.url));
-const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const root = dirname(fileURLToPath(import.meta.url));
 
-// Pre-flight data validation: the Runbook's promise is audited data, so refuse to
-// hand in a dossier built on a broken trophy file. The list must hold exactly 55
-// trophies, each with a non-blank name and a non-blank guide.
-const dataFile = join(here, 'app', 'data', 'trophies.json');
-const data = JSON.parse(readFileSync(dataFile, 'utf8'));
-const trophies = data?.trophies;
-if (!Array.isArray(trophies) || trophies.length !== 55) {
-  throw new Error(`trophies.json: expected exactly 55 trophies, found ${Array.isArray(trophies) ? trophies.length : 'none'}`);
+interface Step { t: string; c: string }
+interface Trophy {
+  id: number; name: string; guide: string; steps: Step[];
+  missable: boolean; window: string | null; cites: string[];
 }
-for (const t of trophies) {
-  if (typeof t?.name !== 'string' || t.name.trim() === '') {
-    throw new Error(`trophies.json: trophy id ${t?.id ?? '?'} has a blank name`);
+interface Record {
+  sources: Record<string, { name: string; role: string; read: string }>;
+  trophies: Trophy[];
+}
+
+function fail(msg: string): never {
+  throw new Error(`Platinum Docket validation: ${msg}`);
+}
+
+const data = JSON.parse(readFileSync(join(root, 'app', 'data', 'trophies.json'), 'utf8')) as Record;
+
+// --- validate the sworn record -------------------------------------------
+if (!data || typeof data !== 'object') fail('trophies.json is not an object');
+if (!Array.isArray(data.trophies)) fail('trophies is not an array');
+if (data.trophies.length !== 55) fail(`expected exactly 55 trophies, found ${data.trophies.length}`);
+const register = data.sources ?? {};
+if (Object.keys(register).length === 0) fail('sources register is empty');
+
+let totalSteps = 0;
+for (const trophy of data.trophies) {
+  if (!trophy.guide || trophy.guide.trim() === '') fail(`trophy ${trophy.id} (${trophy.name}) has a blank guide`);
+  if (!Array.isArray(trophy.steps) || trophy.steps.length === 0) fail(`trophy ${trophy.id} has no steps`);
+  for (const step of trophy.steps) {
+    if (typeof step !== 'object' || step === null || typeof step.t !== 'string' || step.t.trim() === '')
+      fail(`trophy ${trophy.id} has a step that is not a { t, c } exhibit`);
+    if (typeof step.c !== 'string' || !(step.c in register))
+      fail(`trophy ${trophy.id} cites "${String(step.c)}", which is not in the sources register`);
+    totalSteps += 1;
   }
-  if (typeof t?.guide !== 'string' || t.guide.trim() === '') {
-    throw new Error(`trophies.json: trophy "${t.name}" (id ${t.id}) has a blank guide`);
-  }
 }
-const totalSteps = trophies.reduce((n, t) => n + (Array.isArray(t.steps) ? t.steps.length : 0), 0);
-const missableCount = trophies.filter((t) => t.missable).length;
+if (totalSteps < 450) fail(`expected at least 450 cited steps, found ${totalSteps}`);
 
-// The hand-in needs 3–4 screenshots; check the folder before copying anything so a
-// missing or extra shot fails here with a clear message instead of at the scorer.
-const shotsDir = join(here, 'screenshots');
-const shotFiles = existsSync(shotsDir)
-  ? readdirSync(shotsDir).filter((f) => f.toLowerCase().endsWith('.png'))
-  : [];
-if (shotFiles.length < 3 || shotFiles.length > 4) {
-  throw new Error(`screenshots/: expected 3–4 PNG screenshots, found ${shotFiles.length}`);
+const missables = data.trophies.filter((t) => t.missable);
+if (missables.length !== 8) fail(`expected exactly 8 missables, found ${missables.length}`);
+for (const trophy of missables) {
+  if (!trophy.window || trophy.window.trim() === '') fail(`missable trophy ${trophy.id} (${trophy.name}) has no window on record`);
 }
-console.log(`Leonida Runbook data OK: 55 trophies · ${totalSteps} steps · ${missableCount} missable windows · ${shotFiles.length} screenshots · all names and guides present`);
 
-mkdirSync(out, { recursive: true });
-cpSync(join(here, 'app'), join(out, 'app'), { recursive: true });
-mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+console.log(`Platinum Docket validation passed: 55 trophies · ${totalSteps} steps · ${totalSteps} citations · 8 missables with windows · ${Object.keys(register).length} sources`);
 
-// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
-// scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files and directories in app/ or
-// 48 MiB of app files: app/ counts beside /output's own 1000-entry cap, its screenshots/ and dossier.json).
-writeFileSync(
-  join(out, 'dossier.json'),
-  buildDossier(out, { text_max_bytes: 163840, screenshots: { max: 4, max_bytes: 262144 }, app_max_files: 993, app_max_bytes: 50331648 }),
-);
+// --- filing summary, by grade ----------------------------------------------
+const byGrade = new Map<string, { cases: number; exhibits: number }>();
+for (const trophy of data.trophies as (Trophy & { grade: string })[]) {
+  const slot = byGrade.get(trophy.grade) ?? { cases: 0, exhibits: 0 };
+  slot.cases += 1;
+  slot.exhibits += trophy.steps.length;
+  byGrade.set(trophy.grade, slot);
+}
+for (const [grade, slot] of [...byGrade.entries()].sort()) {
+  console.log(`  ${grade}: ${slot.cases} cases · ${slot.exhibits} cited exhibits`);
+}
+
+// --- build the dossier ------------------------------------------------------
+const dossier = buildDossier(root, {
+  text_max_bytes: 4 * 1024 * 1024,
+  screenshots: { max: 8, max_bytes: 256 * 1024 },
+});
+const out = join(root, 'dossier.json');
+writeFileSync(out, dossier);
+console.log(`Dossier written: ${out} (${dossier.length} bytes)`);

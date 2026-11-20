@@ -1,111 +1,39 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Leonida Runbook — GTA VI Platinum Guide &amp; Tracker</title>
-<meta name="description" content="Leonida Runbook: the audited, step-by-step guide to all 55 official GTA VI trophies on PS5 — one careful playthrough, run-sheet roadmap, next-up planner, counters and cited sources. Works offline.">
+<title>The Platinum Docket — Leonida's sworn trophy record</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="hero">
-  <div class="hero-inner">
-    <p class="eyebrow">Grand Theft Auto VI &middot; PlayStation 5 &middot; 55 trophies</p>
-    <h1>Leonida Runbook</h1>
-    <p class="tagline">One careful playthrough, run by the book. Every trophy broken into numbered steps, placed on a 7-stage run sheet, with its missable verdict, window, time and difficulty — and the data audited on every load.</p>
-    <div id="auditStrip" class="audit-strip" role="status">Auditing trophy data…</div>
-    <div class="progress-wrap" role="status" aria-live="polite">
-      <div class="progress-line"><strong id="progressText">0 / 55 earned</strong><span id="progressPct">0%</span></div>
-      <div class="progress-bar"><div id="progressFill"></div></div>
-      <div class="grade-counts" id="gradeCounts"></div>
+<header class="strip">
+  <div class="brand">
+    <h1>The Platinum Docket</h1>
+    <p class="sub">Leonida's sworn trophy record · GTA VI · every step an exhibit, every exhibit cited</p>
+  </div>
+  <div id="audit" class="audit" aria-live="polite">Filing the record…</div>
+  <div class="tools">
+    <input id="q" type="search" placeholder="Search cases, chapters, kinds…" aria-label="Search trophies">
+    <div id="chips" class="chips" role="group" aria-label="Filters"></div>
+    <div class="io">
+      <button id="exportBtn" type="button">Export</button>
+      <button id="importBtn" type="button">Import</button>
+      <button id="resetBtn" type="button">Reset</button>
+      <input id="importFile" type="file" accept="application/json" hidden>
     </div>
   </div>
+  <nav class="tabs" aria-label="Docket sections">
+    <button type="button" data-tab="docket" class="tab on">Docket</button>
+    <button type="button" data-tab="roadmap" class="tab">Roadmap</button>
+    <button type="button" data-tab="missables" class="tab">Missables</button>
+    <button type="button" data-tab="next" class="tab">Next-Up</button>
+    <button type="button" data-tab="sources" class="tab">Sources</button>
+  </nav>
+  <div id="progress" class="progress"></div>
 </header>
-
-<div id="missableBanner" class="missable-banner" role="alert">
-  <strong>Missable alert:</strong> <span id="missableBannerText"></span>
-  <button type="button" id="missableBannerGo">See all missables</button>
-</div>
-
-<nav class="tabs" aria-label="Guide sections">
-  <button type="button" data-tab="checklist" class="active">Checklist</button>
-  <button type="button" data-tab="roadmap">Run Sheet</button>
-  <button type="button" data-tab="missables">Missables</button>
-  <button type="button" data-tab="sources">Sources</button>
-</nav>
-
-<main>
-  <section id="tab-checklist" class="tab-panel active">
-    <div class="next-up" id="nextUpPanel">
-      <h2>Next up — your next five</h2>
-      <p class="section-intro">The next unearned trophies in run-sheet order. Missable-window trophies come first, so nothing with a closing window waits behind a grind.</p>
-      <div id="nextUpList" class="next-up-list"></div>
-    </div>
-    <div class="controls">
-      <label class="search">Search <input id="search" type="search" placeholder="Trophy name or guide text…" autocomplete="off"></label>
-      <label>Kind
-        <select id="kind">
-          <option value="all">All kinds</option>
-          <option value="story">Story</option>
-          <option value="side">Side strands</option>
-          <option value="activities">Activities</option>
-          <option value="collectibles">Collectibles</option>
-          <option value="world">Open world</option>
-          <option value="completion">Completion</option>
-        </select>
-      </label>
-      <label>Grade
-        <select id="grade">
-          <option value="all">All grades</option>
-          <option value="platinum">Platinum</option>
-          <option value="gold">Gold</option>
-          <option value="silver">Silver</option>
-          <option value="bronze">Bronze</option>
-        </select>
-      </label>
-      <label>Stage
-        <select id="stage">
-          <option value="all">All stages</option>
-        </select>
-      </label>
-      <label class="check"><input id="missableOnly" type="checkbox"> Missable only</label>
-      <label class="check"><input id="hideEarned" type="checkbox"> Hide earned</label>
-      <label class="check"><input id="spoiler" type="checkbox"> Spoiler-safe mode</label>
-    </div>
-    <p class="hint">Tick a trophy when you earn it — progress saves on this device. Spoiler-safe mode masks hidden trophies' names and descriptions until you earn them. Open a guide for numbered steps and, on counted trophies, a working counter.</p>
-    <div class="actions">
-      <button type="button" id="exportBtn">Export progress</button>
-      <label class="import-btn">Import progress <input id="importFile" type="file" accept="application/json"></label>
-      <button type="button" id="resetBtn" class="danger">Reset progress</button>
-      <span id="resultCount" class="result-count"></span>
-    </div>
-    <div id="trophyList" class="trophy-list"></div>
-    <p id="emptyState" class="empty-state" hidden>No trophies match these filters. Clear the search or widen the filters.</p>
-  </section>
-
-  <section id="tab-roadmap" class="tab-panel" hidden>
-    <h2>The Run Sheet — one playthrough, in order</h2>
-    <p class="section-intro">Seven stages in play order: story chapters first with their missable windows flagged inline, then strands, activities, the collectible sweep, and the platinum. Play top to bottom and nothing is left behind a closed window.</p>
-    <ol class="roadmap" id="roadmapList"></ol>
-  </section>
-
-  <section id="tab-missables" class="tab-panel" hidden>
-    <h2>Missables — do these inside their windows</h2>
-    <p class="section-intro">Most GTA VI trophies can be earned any time in free roam — every trophy in this Runbook carries a missable verdict saying why. The eight below are the exceptions: each is tied to a partner, a story phase, or a single clean attempt. Each card shows its window and the stage and chapter to do it in.</p>
-    <div id="missableList" class="trophy-list"></div>
-  </section>
-
-  <section id="tab-sources" class="tab-panel" hidden>
-    <h2>Sources &amp; method</h2>
-    <p class="section-intro">Trophy names, descriptions, grades and hidden flags follow the official PlayStation trophy list. Every guide on this page is written in the author's own words; the sources below are where the underlying facts were checked, and each trophy's guide names its own sources. Nothing here copies another guide's text. The audit strip at the top of the page is recomputed from the data file on every load — if a step, verdict or count were missing, the strip would say so.</p>
-    <ul class="source-list" id="sourceList"></ul>
-    <p class="section-intro">Counts used in the guides: 250 stunts, 42 Shooting Range challenges, 14 drone-race locations, 20 races, 9 activity types, 8 stranger strands, 18 meditation spots, 3 card sets, 100 WAiNK It locations, 50 challenges, 100 vehicles, 5 bank vaults, 52 areas, 9 gangs, $250,000 laundered, $100,000 spent, 8 garages, 10 Scooter Bros registrations, 500 choices.</p>
-  </section>
-</main>
-
-<footer>
-  <p>Leonida Runbook — an unofficial fan guide. Not affiliated with Rockstar Games or PlayStation. Trophy data: official PlayStation list, 2026-11-18; sources read 2026-11-19. Works fully offline; your checklist never leaves this device.</p>
-</footer>
-<script type="module" src="app.js"></script>
+<main id="main"></main>
+<footer class="foot">The Platinum Docket — a sworn record, not a promise: trophy data as read from the dated sources in the register. Tracker state lives only in your browser.</footer>
+<script src="app.js"></script>
 </body>
 </html>
